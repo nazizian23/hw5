@@ -12,11 +12,13 @@
 using namespace std;
 
 
+
 // Add prototypes of helper functions here
 
-bool containsAllFloating(const string& word, const string& floating);
 
-void recurseWordle(string& curr, int index,string floating, const set<string>& dict, set<string>& results);
+void generateWords(string& attempt, int pos,map<char,int>& floatLetters, int floatsLeft, const set<string>& dict, set<string>& results, const set<char>& allowedLetters);
+
+
 // Definition of primary wordle function
 std::set<std::string> wordle(
     const std::string& in,
@@ -24,103 +26,95 @@ std::set<std::string> wordle(
     const std::set<std::string>& dict)
 {
     // Add your code here
+    //store valid words
     set<string> results;
-    string curr=in;
-    string adjustedFloating=floating;
-    //removes the fixed position chars from the floating list
-    for(size_t i=0;i<curr.size();++i){
-        char c=curr[i];
-        size_t pos=adjustedFloating.find(c);
-        if(c!='-'&& pos!=string::npos){
-            adjustedFloating.erase(pos,1);//removes the first occurrence
+    //start with given pattern
+    string attempt=in;
+    //map to track required floating floating letters and how many of each
+    map<char,int> floatLetters;
+    int totalFloat=0;
+    //count the frequency of floating letters
+    for(size_t i=0;i<floating.size();++i){
+        char c=floating[i];
+        floatLetters[c]++;
+        totalFloat++;
+    }
+    int numBlanks=0;
+    //Adjust the floating letter counts based on already fixed letters in the pattern
+    for(size_t i=0;i<attempt.size();++i){
+      char c=attempt[i];
+      if(c=='-'){
+        numBlanks++;
+      }
+      else if(floatLetters.find(c) != floatLetters.end()){
+        if(--floatLetters[c]==0){
+          floatLetters.erase(c);
         }
+        totalFloat--;
+      }
+    }
+    //Determine the set of allowed letters that can fill blanks
+    set<char>allowedLetters(floating.begin(),floating.end());
+    if(numBlanks>floating.size()){
+      //If there are extra blanks allow any letter a through z
+      char c;
+      for(c='a';c<='z';++c){
+        allowedLetters.insert(c);
+      }
     }
     // begin recursion
-    recurseWordle(curr,0,adjustedFloating,dict,results);
+    generateWords(attempt,0,floatLetters,totalFloat,dict,results,allowedLetters);
     
     return results;
 
 }
 
 // Define any helper functions here
-
-//Checks if all floating letters exist in the final word
-bool containsAllFloating(const string& word, const string& floating){
-    //make a temp copy of word so we can find used letters and mark them
-    string temp=word;
-
-    //For each floating letter check if its in the temp word
-    for(size_t i=0;i<floating.size();++i){
-        char c=floating[i];
-        //find first occurrence of the char
-        size_t pos=temp.find(c);
-        //if its not found the word is missing a required floating letter
-        if(pos==string::npos){
-            return false;
-        }
-        temp[pos]='*';
+//Recursive helper function
+void generateWords(string& attempt, int pos,map<char,int>& floatLetters, int floatsLeft, const set<string>& dict, set<string>& results, const set<char>& allowedLetters){
+  //If the word is fully filled only add if no floating letters and the word is valid
+  if(pos==attempt.size()){
+      if(floatLetters.empty() && dict.count(attempt)){
+          results.insert(attempt);
+      }
+      return;
+  }
+  //Count how many blanks remain after current position
+  int blanksAhead=0;
+  for(size_t j=pos;j<attempt.size();++j){
+    if(attempt[j]=='-'){
+      blanksAhead++;
     }
 
-    return true;
+  }
 
-
-
-
+  if(blanksAhead<floatsLeft){
+    return;
+  }
+  //If current position is already filled move to next
+  if(attempt[pos]!='-'){
+    generateWords(attempt,pos+1,floatLetters,floatsLeft,dict,results,allowedLetters);
+    return;
+  }
+  else{
+    //Try all allowed letters at the blank position
+    set<char>::const_iterator it;
+    for(it=allowedLetters.begin();it!=allowedLetters.end();++it){
+      char c=*it;
+      attempt[pos]=c;
+      //copy floating map and update it if its using a floating letter
+      map<char,int> newFloatLetters=floatLetters;
+      int newFloatsLeft=floatsLeft;
+      if(newFloatLetters.find(c)!=newFloatLetters.end()){
+        if(--newFloatLetters[c]==0){
+          newFloatLetters.erase(c);
+        }
+        newFloatsLeft--;
+      }
+      //recurse for next position
+      generateWords(attempt,pos+1,newFloatLetters,newFloatsLeft,dict,results,allowedLetters);
+      attempt[pos]='-';
+    }
+  }
 }
-
-
-//Recursive helper to generate words char by char
-void recurseWordle(string& curr, int index,string floating, const set<string>& dict, set<string>& results){
-
-    //Base case when the entire word is formed
-    if(index==curr.size()){
-        //Check if all the letters are used and word is correct
-        if(containsAllFloating(curr,floating) && dict.find(curr)!=dict.end()){
-            results.insert(curr);
-        }
-        return;
-    }
-    //Counts the remaining blank spaces from the current index on
-    int blanksLeft=0;
-    for(int i=index;i<curr.size();++i){
-        if(curr[i]=='-'){
-            ++blanksLeft;
-        }
-    }
-    //If not enough blanks left to place the letters stop
-    if(blanksLeft<floating.size()){
-        return;
-    }
-    //If the current char is already fixed continue to next index
-    if(curr[index]!='-'){
-        recurseWordle(curr,index+1,floating,dict,results);
-    }
-    else{
-        //Try lowercase letters
-        for(char c= 'a';c<='z';++c){
-            curr[index]=c;
-            //copy the floating list to update if we use the letter
-            size_t pos=floating.find(c);
-            string nextFloating=floating;
-            //if the letter is in the floating list remove one instance of it
-            if(pos!=string::npos){
-                nextFloating.erase(pos,1);
-                recurseWordle(curr,index+1,nextFloating,dict,results);
-            }
-            //if not in floating, only continue if there are enough blanks left
-            else if(floating.size()<blanksLeft){
-                recurseWordle(curr,index+1,floating,dict,results);
-
-            }
-            
-        }
-
-        curr[index]='-';
-    }
-
-
-}
-
-
-
 
